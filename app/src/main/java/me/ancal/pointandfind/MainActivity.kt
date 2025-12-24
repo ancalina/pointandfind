@@ -42,7 +42,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraPreview: PreviewView
     private lateinit var wordList: RecyclerView
 
-    private val httpClient = OkHttpClient()
+    private val httpClient = OkHttpClient.Builder()
+        .callTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .connectTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .readTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .writeTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .build()
     private var imageCapture: ImageCapture? = null
     private val wordItems = mutableListOf<WordItem>()
     private val wordAdapter = WordAdapter(wordItems)
