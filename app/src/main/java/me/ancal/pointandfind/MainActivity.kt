@@ -1,21 +1,32 @@
 package me.ancal.pointandfind
 
 import android.Manifest
-import android.net.Uri
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Environment
+import android.speech.tts.TextToSpeech
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.FileProvider
+import androidx.appcompat.widget.SwitchCompat
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -27,28 +38,25 @@ class MainActivity : AppCompatActivity() {
     private lateinit var serverUrlInput: EditText
     private lateinit var statusText: TextView
     private lateinit var captureButton: Button
+    private lateinit var ttsToggle: SwitchCompat
+    private lateinit var cameraPreview: PreviewView
+    private lateinit var wordList: RecyclerView
 
     private val httpClient = OkHttpClient()
-    private var currentPhotoFile: File? = null
-    private var currentPhotoUri: Uri? = null
+    private var imageCapture: ImageCapture? = null
+    private val wordItems = mutableListOf<WordItem>()
+    private val wordAdapter = WordAdapter(wordItems)
+
+    private var textToSpeech: TextToSpeech? = null
+    private var ttsReady = false
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            launchCamera()
+            startCamera()
         } else {
             statusText.text = "Camera permission denied."
-        }
-    }
-
-    private val takePictureLauncher = registerForActivityResult(
-        ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success) {
-            uploadCurrentPhoto()
-        } else {
-            statusText.text = "Photo capture cancelled."
         }
     }
 
@@ -59,22 +67,97 @@ class MainActivity : AppCompatActivity() {
         serverUrlInput = findViewById(R.id.serverUrlInput)
         statusText = findViewById(R.id.statusText)
         captureButton = findViewById(R.id.captureButton)
+        ttsToggle = findViewById(R.id.ttsToggle)
+        cameraPreview = findViewById(R.id.cameraPreview)
+        wordList = findViewById(R.id.wordList)
+
+        wordList.layoutManager = LinearLayoutManager(this)
+        wordList.adapter = wordAdapter
+
+        ttsToggle.isChecked = false
+        ttsToggle.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                ensureTextToSpeech()
+            }
+        }
 
         captureButton.setOnClickListener {
+            takePhoto()
+        }
+
+        ensureCameraPermission()
+    }
+
+    override fun onDestroy() {
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        super.onDestroy()
+    }
+
+    private fun ensureTextToSpeech() {
+        if (textToSpeech != null) return
+        textToSpeech = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val result = textToSpeech?.setLanguage(Locale.KOREAN)
+                ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
+                    result != TextToSpeech.LANG_NOT_SUPPORTED
+                if (!ttsReady) {
+                    ttsToggle.isChecked = false
+                    statusText.text = "TTS language not supported."
+                }
+            } else {
+                ttsReady = false
+                ttsToggle.isChecked = false
+                statusText.text = "TTS init failed."
+            }
+        }
+    }
+
+    private fun speakItems(items: List<WordItem>) {
+        if (!ttsToggle.isChecked || !ttsReady || items.isEmpty()) return
+        val speechText = items.joinToString(separator = ". ") { item ->
+            "${item.word}. ${item.definition}"
+        }
+        textToSpeech?.speak(speechText, TextToSpeech.QUEUE_ADD, null, "word_items")
+    }
+
+    private fun ensureCameraPermission() {
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            startCamera()
+        } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
-    private fun launchCamera() {
-        val photoFile = createImageFile()
-        currentPhotoFile = photoFile
-        val photoUri = FileProvider.getUriForFile(
-            this,
-            "${applicationContext.packageName}.fileprovider",
-            photoFile
-        )
-        currentPhotoUri = photoUri
-        takePictureLauncher.launch(photoUri)
+    private fun startCamera() {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(cameraPreview.surfaceProvider)
+            }
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build()
+
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(
+                    this,
+                    cameraSelector,
+                    preview,
+                    imageCapture
+                )
+            } catch (ex: Exception) {
+                statusText.text = "Camera start failed: ${ex.message}"
+            }
+        }, ContextCompat.getMainExecutor(this))
     }
 
     private fun createImageFile(): File {
@@ -83,11 +166,37 @@ class MainActivity : AppCompatActivity() {
         return File.createTempFile("PAF_${timeStamp}", ".jpg", storageDir)
     }
 
-    private fun uploadCurrentPhoto() {
-        val photoFile = currentPhotoFile
+    private fun takePhoto() {
+        val imageCapture = imageCapture
+        if (imageCapture == null) {
+            statusText.text = "Camera is not ready."
+            return
+        }
+
+        val photoFile = createImageFile()
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+
+        statusText.text = "Capturing photo..."
+
+        imageCapture.takePicture(
+            outputOptions,
+            ContextCompat.getMainExecutor(this),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                    uploadPhoto(photoFile)
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    statusText.text = "Photo capture failed: ${exception.message}"
+                }
+            }
+        )
+    }
+
+    private fun uploadPhoto(photoFile: File) {
         val serverUrl = serverUrlInput.text.toString().trim()
-        if (photoFile == null || serverUrl.isBlank()) {
-            statusText.text = "Missing photo or server URL."
+        if (serverUrl.isBlank()) {
+            statusText.text = "Missing server URL."
             return
         }
 
@@ -112,23 +221,28 @@ class MainActivity : AppCompatActivity() {
 
                 httpClient.newCall(request).execute().use { response ->
                     val body = response.body?.string().orEmpty()
-                    val message = if (response.isSuccessful) {
+                    if (response.isSuccessful) {
                         val json = runCatching { JSONObject(body) }.getOrNull()
-                        val received = json?.optBoolean("received") ?: false
-                        val filename = json?.optString("filename") ?: ""
-                        if (received) {
-                            "Server received: $filename"
-                        } else {
-                            "Upload ok, but server did not confirm receipt."
+                        val items = json?.optJSONArray("items")
+                        val newItems = parseItems(items)
+
+                        runOnUiThread {
+                            if (newItems.isNotEmpty()) {
+                                wordItems.addAll(newItems)
+                                wordAdapter.notifyItemRangeInserted(
+                                    wordItems.size - newItems.size,
+                                    newItems.size
+                                )
+                                statusText.text = "Saved ${newItems.size} words."
+                                speakItems(newItems)
+                            } else {
+                                statusText.text = "No words found."
+                            }
+                            Toast.makeText(this, "Upload complete", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        "Upload failed: ${response.code}"
-                    }
-
-                    runOnUiThread {
-                        statusText.text = message
-                        if (response.isSuccessful) {
-                            Toast.makeText(this, "Upload complete", Toast.LENGTH_SHORT).show()
+                        runOnUiThread {
+                            statusText.text = "Upload failed: ${response.code}"
                         }
                     }
                 }
@@ -138,5 +252,50 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun parseItems(items: JSONArray?): List<WordItem> {
+        if (items == null) return emptyList()
+        val results = mutableListOf<WordItem>()
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            val word = item.optString("word").trim()
+            val definition = item.optString("definition").trim()
+            if (word.isNotEmpty() && definition.isNotEmpty()) {
+                results.add(WordItem(word, definition))
+            }
+        }
+        return results
+    }
+}
+
+private data class WordItem(
+    val word: String,
+    val definition: String
+)
+
+private class WordAdapter(
+    private val items: List<WordItem>
+) : RecyclerView.Adapter<WordViewHolder>() {
+    override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): WordViewHolder {
+        val view = android.view.LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_word, parent, false)
+        return WordViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: WordViewHolder, position: Int) {
+        holder.bind(items[position])
+    }
+
+    override fun getItemCount(): Int = items.size
+}
+
+private class WordViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
+    private val wordText: TextView = itemView.findViewById(R.id.wordText)
+    private val definitionText: TextView = itemView.findViewById(R.id.definitionText)
+
+    fun bind(item: WordItem) {
+        wordText.text = item.word
+        definitionText.text = item.definition
     }
 }

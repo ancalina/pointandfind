@@ -2,5 +2,6 @@
     <string name="app_name">PointAndFind</string>
     <string name="server_url_hint">Server URL (e.g. http://10.0.2.2:5000)</string>
     <string name="capture_button">Take Photo &amp; Upload</string>
+    <string name="tts_toggle">TTS 읽기</string>
     <string name="status_idle">Ready to capture.</string>
 </resources>
