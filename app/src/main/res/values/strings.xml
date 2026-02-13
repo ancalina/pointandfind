@@ -1,6 +1,11 @@
 <resources>
-    <string name="app_name">PointAndFind</string>
-    <string name="server_url_hint">Server URL (e.g. http://10.0.2.2:5000)</string>
-    <string name="capture_button">Take Photo &amp; Upload</string>
-    <string name="status_idle">Ready to capture.</string>
+    <string name="app_name">PNT&amp;FIND</string>
+    <string name="api_key_hint">API 키를 입력하세요</string>
+    <string name="status_ready">준비 완료</string>
+    <string name="status_scanning">사진 분석 중...</string>
+    <string name="status_done">분석 완료!</string>
+    <string name="status_failed">분석 실패</string>
+    <string name="word_list_title">찾은 단어장</string>
+    <string name="api_key_required">먼저 API 키를 입력해 주세요</string>
+    <string name="capture_description">사진 찍기</string>
 </resources>

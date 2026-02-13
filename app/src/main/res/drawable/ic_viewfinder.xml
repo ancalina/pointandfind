@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+    
+    <!-- Corners -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M40,20 L20,20 L20,40 M160,20 L180,20 L180,40 M180,160 L180,180 L160,180 M40,180 L20,180 L20,160" />
+        
+    <!-- Center Crosshair (Optional, keeping it clean for now) -->
+    <!-- <path
+        android:fillColor="#00000000"
+        android:strokeColor="#80FFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M90,100 L110,100 M100,90 L100,110" /> -->
+        
+    <!-- Scanning Line (Decorative) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4000E5FF"
+        android:strokeWidth="1"
+        android:pathData="M10,100 L190,100" />
+</vector>
