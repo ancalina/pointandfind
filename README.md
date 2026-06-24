@@ -1,28 +1,24 @@
-# pointandfind
+# Point and Find
 
-사진 촬영 후 서버로 업로드하고, 서버가 수신 확인 JSON을 돌려주는 간단한 샘플입니다.
+카메라로 사진을 촬영한 뒤 Google Gemini API로 이미지 속 강조된 단어를 분석하고,
+단어와 뜻을 단어장 형태로 저장하며 필요하면 TTS로 읽어주는 Android 앱입니다.
 
 ## Android 앱
-- 패키지 ID: `me.ancal.pointandfind`
-- 버튼을 누르면 카메라를 실행하여 사진을 촬영하고 `/upload`로 전송합니다.
-- 서버 응답에서 `received: true`를 확인하면 수신 완료 메시지를 표시합니다.
 
-### 빌드/실행
-1. Android Studio에서 프로젝트 열기.
-2. 서버 URL 입력 (예: 에뮬레이터에서 `http://10.0.2.2:5000`).
-3. **Take Photo & Upload** 버튼을 눌러 촬영 후 업로드.
+- 패키지 ID: `point.and.find`
+- CameraX 기반 앱 내 카메라 프리뷰 사용
+- Gemini API 키를 앱에서 입력하여 저장
+- 사진 촬영 후 Gemini에 이미지 분석 요청
+- 응답 JSON의 `items` 배열에서 `word`, `definition`을 읽어 단어장에 추가
+- 단어장은 SharedPreferences에 저장됨
+- TTS 음성 안내 지원
+- 단어 클릭 시 Google 검색 실행
+- 롱클릭으로 선택 모드 진입 후 선택 삭제 가능
 
-## 서버
-Flask로 구현된 간단한 파일 수신 서버입니다.
+## 빌드/실행
 
-```bash
-cd server
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python app.py
-```
-
-- 업로드 엔드포인트: `POST /upload`
-- 헬스 체크: `GET /health`
-- 업로드된 파일은 `server/uploads/`에 저장됩니다.
+1. Android Studio에서 프로젝트를 연다.
+2. 앱을 실행하고 카메라 권한을 허용한다.
+3. 상단 `API` 버튼에서 Gemini API 키를 입력한다.
+4. 카메라 버튼을 눌러 사진을 촬영한다.
+5. 분석 결과가 하단 단어장에 표시된다.
